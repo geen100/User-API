@@ -1,0 +1,40 @@
+クエリの WHERE 句にある id != ? の id には、除外したいユーザーのID が入ります。このようなクエリは、通常以下のようなケースで使用されます。
+
+このクエリが使われるケース
+account_id がユニークであることを確認する際に、特定のユーザーのIDを除外して重複を確認するために使用されます。
+
+たとえば、ユーザー情報を更新しようとしているとします。このとき、account_id が他のユーザーと重複していないかを確認する必要がありますが、現在更新しているユーザー自身の account_id は除外する必要があります。このため、クエリに id != ? という条件を追加します。
+
+id != ? に渡される値
+この id には、現在更新しようとしているユーザーのID が渡されます。
+
+具体的には、例えば次のような状況を想定しています：
+
+あるユーザー（ID: 5）を更新しようとしています。
+account_id は重複しないようにユニークにしたい。
+このユーザーが既に存在しているので、自分自身の account_id は重複チェックの対象外とします。
+そのため、クエリ内の ? に現在のユーザーのID (currentID 変数) が渡されます。これにより、データベース内で account_id が他のユーザーと重複していないかを確認しつつ、現在のユーザー自身は除外することができます。
+
+クエリの動作
+sql
+コードをコピーする
+SELECT id FROM users WHERE account_id = ? AND id != ?
+account_id = ?: 指定された account_id を持つレコードを探します。
+id != ?: その中で、現在のユーザーのIDと異なるものを探します。
+例
+go
+コードをコピーする
+query := "SELECT id FROM users WHERE account_id = ? AND id != ?"
+err := db.QueryRow(query, accountID, currentID).Scan(&existingID)
+if err != sql.ErrNoRows {
+    return errors.New("account ID already exists")
+}
+accountID: 更新しようとしている account_id。
+currentID: 現在のユーザーの id で、重複チェックから除外する対象。
+動作の流れ
+account_id が同じ他のユーザーがいないか確認します。
+ただし、現在のユーザーのID (currentID) は除外します。
+該当する account_id が他のユーザーで既に存在する場合、existingID に値が入り、エラーを返します。
+sql.ErrNoRows が返された場合、重複はなく安全に更新が可能です。
+まとめ
+クエリの id != ? には、現在操作中のユーザーのID が渡され、account_id が重複しないように現在のユーザーを除外して重複チェックを行います。
