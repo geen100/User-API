@@ -1,0 +1,28 @@
+services:
+  app:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT}:8080"
+    depends_on:
+      - db
+    environment:
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_HOST: ${MYSQL_HOST}
+      MYSQL_PORT: ${MYSQL_PORT}
+
+  db:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./database/init:/docker-entrypoint-initdb.d
+      - ./database/config/my.cnf:/etc/mysql/my.cnf
