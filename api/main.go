@@ -12,14 +12,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-type User struct {
-	ID        uint64 `json:"id"`
-	AccountID string `json:"account_id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Age       uint8  `json:"age"`
-}
-
 func ConnectDB() (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
 		os.Getenv("MYSQL_USER"),
@@ -44,7 +36,11 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dbConn.Close()
 
-	query := "INSERT INTO users (account_id, first_name, last_name, age) VALUES (?, ?, ?, ?)"
+	if err := ValidateUser(user, dbConn); err != nil {
+		http.Error(w, "input error", http.StatusBadRequest)
+	}
+
+	query := "INSERT INTO `users` (`account_id`,`first_name`, `last_name`, `age`) VALUES (?, ?, ?, ?)"
 	result, err := dbConn.Exec(query, user.AccountID, user.FirstName, user.LastName, user.Age)
 	if err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -70,8 +66,7 @@ func GetAllUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dbConn.Close()
 
-	// 全ユーザーを取得
-	rows, err := dbConn.Query("SELECT id, account_id, first_name, last_name, age FROM users")
+	rows, err := dbConn.Query("SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users`")
 	if err != nil {
 		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
@@ -113,7 +108,7 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 	defer dbConn.Close()
 
 	var user User
-	query := "SELECT id, account_id, first_name, last_name, age FROM users WHERE id = ?"
+	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
 	err = dbConn.QueryRow(query, id).Scan(&user.ID, &user.AccountID, &user.FirstName, &user.LastName, &user.Age)
 	if err == sql.ErrNoRows {
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -149,7 +144,7 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	defer dbConn.Close()
 
 	var existingUser User
-	query := "SELECT id, account_id, first_name, last_name, age FROM users WHERE id = ?"
+	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
 	err = dbConn.QueryRow(query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
 	if err == sql.ErrNoRows {
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -157,6 +152,14 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	} else if err != nil {
 		http.Error(w, "Failed to retrieve user", http.StatusInternalServerError)
 		return
+	}
+
+	if err := ValidateNameLength(existingUser.FirstName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	if err := ValidateNameLength(existingUser.LastName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
 	if updates.FirstName != "" {
