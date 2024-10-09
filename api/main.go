@@ -3,14 +3,17 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
+
+var db *sql.DB
 
 func ConnectDB() (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
@@ -23,25 +26,20 @@ func ConnectDB() (*sql.DB, error) {
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	var user User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
 
-	dbConn, err := ConnectDB()
-	if err != nil {
-		http.Error(w, "Failed to connect to DB", http.StatusInternalServerError)
-		return
-	}
-	defer dbConn.Close()
-
-	if err := ValidateUser(user, dbConn); err != nil {
+	if err := ValidateUser(user, db); err != nil {
 		http.Error(w, "input error", http.StatusBadRequest)
 	}
 
 	query := "INSERT INTO `users` (`account_id`,`first_name`, `last_name`, `age`) VALUES (?, ?, ?, ?)"
-	result, err := dbConn.Exec(query, user.AccountID, user.FirstName, user.LastName, user.Age)
+	result, err := db.ExecContext(ctx, query, user.AccountID, user.FirstName, user.LastName, user.Age)
 	if err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
@@ -59,20 +57,13 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	dbConn, err := ConnectDB()
-	if err != nil {
-		http.Error(w, "Failed to connect to DB", http.StatusInternalServerError)
-		return
-	}
-	defer dbConn.Close()
+	ctx := r.Context()
 
-	rows, err := dbConn.Query("SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users`")
+	rows, err := db.QueryContext(ctx, "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users`")
 	if err != nil {
 		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-
 	var users []User
 	for rows.Next() {
 		var user User
@@ -93,28 +84,23 @@ func GetAllUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func getUserByID(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/users/")
+	ctx := r.Context()
+
+	idStr := r.PathValue("user_id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
-	dbConn, err := ConnectDB()
-	if err != nil {
-		http.Error(w, "Failed to connect to DB", http.StatusInternalServerError)
-		return
-	}
-	defer dbConn.Close()
-
 	var user User
 	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
-	err = dbConn.QueryRow(query, id).Scan(&user.ID, &user.AccountID, &user.FirstName, &user.LastName, &user.Age)
-	if err == sql.ErrNoRows {
+	err = db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.AccountID, &user.FirstName, &user.LastName, &user.Age)
+	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		http.Error(w, "Failed to retrieve user", http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
 	}
 
@@ -123,7 +109,9 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/users/")
+	ctx := r.Context()
+
+	idStr := r.PathValue("user_id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
@@ -136,30 +124,15 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbConn, err := ConnectDB()
-	if err != nil {
-		http.Error(w, "Failed to connect to DB", http.StatusInternalServerError)
-		return
-	}
-	defer dbConn.Close()
-
 	var existingUser User
 	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
-	err = dbConn.QueryRow(query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
+	err = db.QueryRowContext(ctx, query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
 	if err == sql.ErrNoRows {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
 		http.Error(w, "Failed to retrieve user", http.StatusInternalServerError)
 		return
-	}
-
-	if err := ValidateNameLength(existingUser.FirstName); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-
-	if err := ValidateNameLength(existingUser.LastName); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 
 	if updates.FirstName != "" {
@@ -172,8 +145,16 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		existingUser.Age = updates.Age
 	}
 
+	if err := ValidateNameLength(existingUser.FirstName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
+	if err := ValidateNameLength(existingUser.LastName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+
 	updateQuery := "UPDATE users SET first_name = ?, last_name = ?, age = ? WHERE id = ?"
-	_, err = dbConn.Exec(updateQuery, existingUser.FirstName, existingUser.LastName, existingUser.Age, id)
+	_, err = db.Exec(updateQuery, existingUser.FirstName, existingUser.LastName, existingUser.Age, id)
 	if err != nil {
 		http.Error(w, "Failed to update user", http.StatusInternalServerError)
 		return
@@ -183,22 +164,17 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/users/")
+	ctx := r.Context()
+
+	idStr := r.PathValue("user_id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid user ID", http.StatusBadRequest)
 		return
 	}
 
-	dbConn, err := ConnectDB()
-	if err != nil {
-		http.Error(w, "Failed to connect to DB", http.StatusInternalServerError)
-		return
-	}
-	defer dbConn.Close()
-
 	query := "DELETE FROM users WHERE id = ?"
-	_, err = dbConn.Exec(query, id)
+	_, err = db.ExecContext(ctx, query, id)
 	if err != nil {
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
 		return
@@ -208,10 +184,20 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	var err error
+
+	db, err := ConnectDB()
+	if err != nil {
+		log.Fatalln("Failed to connect to DB", err)
+	}
+	defer db.Close()
+
 	http.HandleFunc("POST /users", CreateUser)
 	http.HandleFunc("GET /", GetAllUsers)
 	http.HandleFunc("GET /users/{user_id}", getUserByID)
 	http.HandleFunc("PUT /users/{user_id}", UpdateUser)
 	http.HandleFunc("DELETE /users/{user_id}", DeleteUser)
+
+	log.Println("Server stating on :8080")
 	http.ListenAndServe(":8080", nil)
 }
