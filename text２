@@ -1,30 +1,5 @@
- 2024/10/09 01:50:51 http: panic serving 192.168.65.1:31173: runtime error: invalid memory address or nil pointer dereference
-app-1  | goroutine 5 [running]:
-app-1  | net/http.(*conn).serve.func1()
-app-1  |        /usr/local/go/src/net/http/server.go:1947 +0xb0
-app-1  | panic({0x2c5540?, 0x581210?})
-app-1  |        /usr/local/go/src/runtime/panic.go:785 +0x124
-app-1  | database/sql.(*DB).conn(0x0?, {0x3a3980?, 0x400007a0f0?}, 0x84?)
-app-1  |        /usr/local/go/src/database/sql/sql.go:1309 +0x28
-app-1  | database/sql.(*DB).query(0x0, {0x3a3980, 0x400007a0f0}, {0x32c995, 0x55}, {0x4000101a38, 0x1, 0x1}, 0x68?)
-app-1  |        /usr/local/go/src/database/sql/sql.go:1751 +0x40
-app-1  | database/sql.(*DB).QueryContext.func1(0x8?)
-app-1  |        /usr/local/go/src/database/sql/sql.go:1734 +0x54
-app-1  | database/sql.(*DB).retry(0x9?, 0x40001018e0)
-app-1  |        /usr/local/go/src/database/sql/sql.go:1568 +0x4c
-app-1  | database/sql.(*DB).QueryContext(0x4000018083?, {0x3a3980?, 0x400007a0f0?}, {0x32c995?, 0x400001807c?}, {0x4000101a38?, 0x9?, 0x4000018078?})
-app-1  |        /usr/local/go/src/database/sql/sql.go:1733 +0x94
-app-1  | database/sql.(*DB).QueryRowContext(...)
-app-1  |        /usr/local/go/src/database/sql/sql.go:1834
-app-1  | main.getUserByID({0x3a3268, 0x4000194000}, 0x4000188000?)
-app-1  |        /app/main.go:98 +0x160
-app-1  | net/http.HandlerFunc.ServeHTTP(0x591cc0?, {0x3a3268?, 0x4000194000?}, 0x23bd14?)
-app-1  |        /usr/local/go/src/net/http/server.go:2220 +0x38
-app-1  | net/http.(*ServeMux).ServeHTTP(0x0?, {0x3a3268, 0x4000194000}, 0x4000188000)
-app-1  |        /usr/local/go/src/net/http/server.go:2747 +0x1b4
-app-1  | net/http.serverHandler.ServeHTTP({0x40001800c0?}, {0x3a3268?, 0x4000194000?}, 0x6?)
-app-1  |        /usr/local/go/src/net/http/server.go:3210 +0xbc
-app-1  | net/http.(*conn).serve(0x4000182000, {0x3a3948, 0x40000b5080})
-app-1  |        /usr/local/go/src/net/http/server.go:2092 +0x4fc
-app-1  | created by net/http.(*Server).Serve in goroutine 1
-app-1  |        /usr/local/go/src/net/http/server.go:3360 +0x3dc
+db-1   | 2024-10-09 04:23:32+00:00 [Note] [Entrypoint]: Entrypoint script for MySQL Server 8.0.32-1.el8 started.
+app-1  | 2024/10/09 04:23:32 Failed to connect to DB dial tcp 172.18.0.2:3306: connect: connection refused
+db-1   | 2024-10-09 04:23:32+00:00 [Note] [Entrypoint]: Switching to dedicated user 'mysql'
+db-1   | 2024-10-09 04:23:32+00:00 [Note] [Entrypoint]: Entrypoint script for MySQL Server 8.0.32-1.el8 started.
+app-1 exited with code 1
