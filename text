@@ -17,13 +17,11 @@ account_id は重複しないようにユニークにしたい。
 
 クエリの動作
 sql
-コードをコピーする
 SELECT id FROM users WHERE account_id = ? AND id != ?
 account_id = ?: 指定された account_id を持つレコードを探します。
 id != ?: その中で、現在のユーザーのIDと異なるものを探します。
 例
 go
-コードをコピーする
 query := "SELECT id FROM users WHERE account_id = ? AND id != ?"
 err := db.QueryRow(query, accountID, currentID).Scan(&existingID)
 if err != sql.ErrNoRows {
