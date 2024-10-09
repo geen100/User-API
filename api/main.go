@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,19 +22,12 @@ func ConnectDB() (*sql.DB, error) {
 		os.Getenv("MYSQL_HOST"),
 		os.Getenv("MYSQL_PORT"),
 		os.Getenv("MYSQL_DATABASE"))
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := db.Ping(); err != nil {
-		return nil, err
-	}
-
-	return db, nil
+	return sql.Open("mysql", dsn)
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	var user User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		http.Error(w, "Invalid input", http.StatusBadRequest)
@@ -45,7 +39,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO `users` (`account_id`,`first_name`, `last_name`, `age`) VALUES (?, ?, ?, ?)"
-	result, err := db.Exec(query, user.AccountID, user.FirstName, user.LastName, user.Age)
+	result, err := db.ExecContext(ctx, query, user.AccountID, user.FirstName, user.LastName, user.Age)
 	if err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
@@ -63,13 +57,13 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetAllUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users`")
+	ctx := r.Context()
+
+	rows, err := db.QueryContext(ctx, "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users`")
 	if err != nil {
 		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-
 	var users []User
 	for rows.Next() {
 		var user User
@@ -90,6 +84,8 @@ func GetAllUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func getUserByID(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	idStr := r.PathValue("user_id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -99,12 +95,12 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 
 	var user User
 	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
-	err = db.QueryRow(query, id).Scan(&user.ID, &user.AccountID, &user.FirstName, &user.LastName, &user.Age)
-	if err == sql.ErrNoRows {
+	err = db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.AccountID, &user.FirstName, &user.LastName, &user.Age)
+	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		http.Error(w, "Failed to retrieve user", http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
 	}
 
@@ -113,6 +109,8 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	idStr := r.PathValue("user_id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -128,7 +126,7 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	var existingUser User
 	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
-	err = db.QueryRow(query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
+	err = db.QueryRowContext(ctx, query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
 	if err == sql.ErrNoRows {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
@@ -166,6 +164,8 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	idStr := r.PathValue("user_id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
@@ -174,7 +174,7 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "DELETE FROM users WHERE id = ?"
-	_, err = db.Exec(query, id)
+	_, err = db.ExecContext(ctx, query, id)
 	if err != nil {
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
 		return
@@ -190,7 +190,6 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to connect to DB", err)
 	}
-
 	defer db.Close()
 
 	http.HandleFunc("POST /users", CreateUser)
@@ -199,6 +198,6 @@ func main() {
 	http.HandleFunc("PUT /users/{user_id}", UpdateUser)
 	http.HandleFunc("DELETE /users/{user_id}", DeleteUser)
 
-	log.Println("Sever stating on :8080")
+	log.Println("Server stating on :8080")
 	http.ListenAndServe(":8080", nil)
 }
