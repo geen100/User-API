@@ -1,25 +1,38 @@
-次にレコードのロックですが、データベースはデータの整合性を担保するため、トランザクション中に更新がかかったレコードのロックを獲得し、他のトランザクションからの更新をブロックする機構が備わっています。今回の課題で利用するSQLだと、INSERTは挿入したレコード自身の、UPDATE, DELETEはそれぞれ更新／削除したレコードのロックを獲得します。具体例を見てみましょう
+func ValidateAccountID(ctx context.Context, accountID string, currentID uint64, db *sql.DB) error {
+	if !validID.MatchString(accountID) {
+		return errors.New("account ID must be between 4 and 64 characters and contain only letters, numbers, and underscores")
+	}
 
-まずターミナルからMySQLサーバーに入り、次のようにクエリを実行します
-※ ここで ID = 1 のレコードがすでに存在しているものとします
+	var existingID uint64
+	query := "SELECT `id` FROM `users` WHERE `account_id` = ? "
+	err := db.QueryRowContext(ctx, query, accountID, currentID).Scan(&existingID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("database query error: %w", err)
+	}
 
-BEGIN;
-UPDATE `users` SET `first_name` = 'New Value' WHERE `id` = 1;
-この状態で別のターミナルから同じようにMySQLサーバーに入り、以下のクエリを実行してみましょう。制御が返らずハングするはずです
+	return errors.New("account ID already exists")
+}
 
-DELETE `users` WHERE `id` = 1;
-元のターミナルに戻り、トランザクションをコミットします。すると更新が反映された直後、2つめのターミナルでも制御が返ってきてDELETEが成功します
+func ValidateNameLength(name string) error {
+	if utf8.RuneCountInString(name) > 100 {
+		return errors.New("name must be 100 characters or less")
+	}
+	return nil
+}
 
-COMMIT;
-で、今回はPUTリクエストのSELECT文でロックを獲得し、SELECTが実行されたらトランザクションがコミットされるまでDELETE文をブロックしないといけません。このときに使うのがレコードの読み取りロック（Locking Read）です。
-https://dev.mysql.com/doc/refman/8.0/ja/innodb-locking-reads.html
+func ValidateUser(ctx context.Context, user User, db *sql.DB) error {
+	if err := ValidateAccountID(ctx, user.AccountID, user.ID, db); err != nil {
+		return err
+	}
 
-具体的には、次のようにSELECT文の最後に FOR UPDATE を追加することで、トランザクション中で有効なロックを獲得できます
-
-SELECT ... FROM `users` WHERE `id` = 1 FOR UPDATE;
-最初のSELECT文を↑のように変更するだけで、レコードロックを獲得できるようになります。
-
-さて、長くなりましたが実施すべき変更は以下の2つです 😌
-
-PUTリクエストの各クエリを実行するためにトランザクションを使う
-PUTリクエストの一回目のSELECT時にレコードロックをする
+	if err := ValidateNameLength(user.FirstName); err != nil {
+		return fmt.Errorf("invalid first name: %w", err)
+	}
+	if err := ValidateNameLength(user.LastName); err != nil {
+		return fmt.Errorf("invalid last name: %w", err)
+	}
+	return nil
+}
