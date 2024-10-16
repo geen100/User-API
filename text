@@ -1,38 +1,19 @@
-func ValidateAccountID(ctx context.Context, accountID string, currentID uint64, db *sql.DB) error {
-	if !validID.MatchString(accountID) {
-		return errors.New("account ID must be between 4 and 64 characters and contain only letters, numbers, and underscores")
-	}
+func ConfirmDuplicate(ctx context.Context, accountID string, tx *sql.Tx) error {
+    var existingCount int
+    query := "SELECT COUNT(*) FROM `users` WHERE `account_id` = ?"
+    
+    // クエリ実行およびスキャンのエラーハンドリング
+    err := tx.QueryRowContext(ctx, query, accountID).Scan(&existingCount)
+    if err != nil {
+        // SQLクエリの実行または読み込みに失敗した場合、Internal Server Error を返す
+        return errors.New("internal server error")
+    }
 
-	var existingID uint64
-	query := "SELECT `id` FROM `users` WHERE `account_id` = ? "
-	err := db.QueryRowContext(ctx, query, accountID, currentID).Scan(&existingID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return fmt.Errorf("database query error: %w", err)
-	}
+    // 重複するアカウントIDが存在する場合のエラーハンドリング
+    if existingCount > 0 {
+        return errors.New("account ID already exists")
+    }
 
-	return errors.New("account ID already exists")
-}
-
-func ValidateNameLength(name string) error {
-	if utf8.RuneCountInString(name) > 100 {
-		return errors.New("name must be 100 characters or less")
-	}
-	return nil
-}
-
-func ValidateUser(ctx context.Context, user User, db *sql.DB) error {
-	if err := ValidateAccountID(ctx, user.AccountID, user.ID, db); err != nil {
-		return err
-	}
-
-	if err := ValidateNameLength(user.FirstName); err != nil {
-		return fmt.Errorf("invalid first name: %w", err)
-	}
-	if err := ValidateNameLength(user.LastName); err != nil {
-		return fmt.Errorf("invalid last name: %w", err)
-	}
-	return nil
+    // 正常に実行された場合、nilを返す
+    return nil
 }
