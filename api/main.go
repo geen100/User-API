@@ -4,19 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"package main
-
-import (
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 var db *sql.DB
@@ -40,14 +34,36 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := ValidateUser(ctx, user, db); err != nil {
-		http.Error(w, "input error", http.StatusBadRequest)
+	if err := AccountIDCharacterLimit(user.AccountID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := ValidateUserName(user.FirstName, user.LastName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		http.Error(w, "Failed to start transtation", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if err := ConfilmDuplicte(ctx, user.AccountID, tx); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
 	query := "INSERT INTO `users` (`account_id`,`first_name`, `last_name`, `age`) VALUES (?, ?, ?, ?)"
-	result, err := db.ExecContext(ctx, query, user.AccountID, user.FirstName, user.LastName, user.Age)
-	if err != nil {
+	result, err := tx.ExecContext(ctx, query, user.AccountID, user.FirstName, user.LastName, user.Age)
+
+	var duplictErr *mysql.MySQLError
+	if errors.As(err, &duplictErr) && duplictErr.Number == 1062 {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	} else if err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
@@ -58,6 +74,11 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user.ID = uint64(id)
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(user)
@@ -101,7 +122,7 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user User
-	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
+	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE `id` = ?"
 	err = db.QueryRowContext(ctx, query, id).Scan(&user.ID, &user.AccountID, &user.FirstName, &user.LastName, &user.Age)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "User not found", http.StatusNotFound)
@@ -132,13 +153,26 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var existingUser User
-	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE id = ?"
-	err = db.QueryRowContext(ctx, query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
-	if err == sql.ErrNoRows {
+
+	if err := ValidateUserName(existingUser.FirstName, existingUser.LastName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	query := "SELECT `id`, `account_id`, `first_name`, `last_name`, `age` FROM `users` WHERE `id` = ? FOR UPDATE"
+	err = tx.QueryRowContext(ctx, query, id).Scan(&existingUser.ID, &existingUser.AccountID, &existingUser.FirstName, &existingUser.LastName, &existingUser.Age)
+	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	} else if err != nil {
-		http.Error(w, "Failed to retrieve user", http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
 		return
 	}
 
@@ -152,20 +186,15 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 		existingUser.Age = updates.Age
 	}
 
-	if err := ValidateNameLength(existingUser.FirstName); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if err := ValidateNameLength(existingUser.LastName); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	updateQuery := "UPDATE `users` SET first_name = ?, last_name = ?, age = ? WHERE id = ?"
-	_, err = db.Exec(updateQuery, existingUser.FirstName, existingUser.LastName, existingUser.Age, id)
+	updateQuery := "UPDATE `users` SET `first_name` = ?, `last_name` = ?, `age` = ? WHERE `id` = ?"
+	_, err = tx.ExecContext(ctx, updateQuery, existingUser.FirstName, existingUser.LastName, existingUser.Age, id)
 	if err != nil {
 		http.Error(w, "Failed to update user", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
 		return
 	}
 
