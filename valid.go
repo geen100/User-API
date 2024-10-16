@@ -1,22 +1,42 @@
-func ValidateAccountID(ctx context.Context, accountID string, currentID uint64, db *sql.DB) error {
+package main
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"regexp"
+	"unicode/utf8"
+)
+
+type User struct {
+	ID        uint64 `json:"id"`
+	AccountID string `json:"account_id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Age       uint8  `json:"age"`
+}
+
+var validID = regexp.MustCompile(`^[a-zA-Z0-9_]{4,64}$`)
+
+func AccountIDCharacterLimit(accountID string) error {
 	if !validID.MatchString(accountID) {
-		return errors.New("account ID must be between 4 and 64 characters and contain only letters, numbers, and underscores")
+		return errors.New("account ID must between 4 and 64 characters and contain only letters, numbers, and underscores")
 	}
+	return nil
+}
 
+func ConfilmDuplicte(ctx context.Context, accountID string, tx *sql.Tx) error {
 	var existingID uint64
-	query := "SELECT id FROM users WHERE account_id = ? AND id != ?"
-	// QueryRowContextを使って、contextからDBクエリを実行する
-	err := db.QueryRowContext(ctx, query, accountID, currentID).Scan(&existingID)
+	query := "SELECT COUNT(*) FROM `users` WHERE `account_id` = ? "
+	err := tx.QueryRowContext(ctx, query, accountID).Scan(&existingID)
 	if err != nil {
-		// エラーチェックでsql.ErrNoRowsを正確に確認
-		if err == sql.ErrNoRows {
-			return nil // ユニークなアカウントID
+		if existingID == 0 {
+			return nil
 		}
-		return fmt.Errorf("database query error: %w", err)
+		return errors.New("account ID already exists")
 	}
-
-	// 同じアカウントIDが既に存在する場合のエラー
-	return errors.New("account ID already exists")
+	return nil
 }
 
 func ValidateNameLength(name string) error {
@@ -26,18 +46,15 @@ func ValidateNameLength(name string) error {
 	return nil
 }
 
-func ValidateUser(ctx context.Context, user User, db *sql.DB) error {
-	// アカウントIDのバリデーションにcontextを渡す
-	if err := ValidateAccountID(ctx, user.AccountID, user.ID, db); err != nil {
-		return err
-	}
-
-	// 名前の長さのバリデーション
-	if err := ValidateNameLength(user.FirstName); err != nil {
+func ValidateUserName(firstName, lastName string) error {
+	if err := ValidateNameLength(firstName); err != nil {
 		return fmt.Errorf("invalid first name: %w", err)
 	}
-	if err := ValidateNameLength(user.LastName); err != nil {
-		return fmt.Errorf("invalid last name: %w", err)
+
+	if err := ValidateNameLength(lastName); err != nil {
+		return fmt.Errorf("invalid first name: %w", err)
 	}
 	return nil
 }
+
+
