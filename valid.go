@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -26,19 +24,6 @@ func AccountIDCharacterLimit(accountID string) error {
 	return nil
 }
 
-func ConfilmDuplicte(ctx context.Context, accountID string, tx *sql.Tx) error {
-	var existingID uint64
-	query := "SELECT COUNT(*) FROM `users` WHERE `account_id` = ? "
-	err := tx.QueryRowContext(ctx, query, accountID).Scan(&existingID)
-	if err != nil {
-		if existingID == 0 {
-			return nil
-		}
-		return errors.New("account ID already exists")
-	}
-	return nil
-}
-
 func ValidateNameLength(name string) error {
 	if utf8.RuneCountInString(name) > 100 {
 		return errors.New("name must be 100 characters or less")
@@ -56,5 +41,3 @@ func ValidateUserName(firstName, lastName string) error {
 	}
 	return nil
 }
-
-
