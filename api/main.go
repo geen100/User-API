@@ -51,12 +51,20 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	if err := ConfilmDuplicte(ctx, user.AccountID, tx); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+	var existingID uint64
+	query := "SELECT COUNT(*) FROM `users` WHERE `account_id` = ? "
+	err = tx.QueryRowContext(ctx, query, user.AccountID).Scan(&existingID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	query := "INSERT INTO `users` (`account_id`,`first_name`, `last_name`, `age`) VALUES (?, ?, ?, ?)"
+	if existingID > 0 {
+		http.Error(w, "account_id is already exists", http.StatusConflict)
+		return
+	}
+
+	query = "INSERT INTO `users` (`account_id`,`first_name`, `last_name`, `age`) VALUES (?, ?, ?, ?)"
 	result, err := tx.ExecContext(ctx, query, user.AccountID, user.FirstName, user.LastName, user.Age)
 
 	var duplictErr *mysql.MySQLError
