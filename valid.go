@@ -43,5 +43,3 @@ func ValidateUserName(firstName, lastName string) error {
 }
 
 
-packages.Load error: err: exit status 1: stderr: go: updates to go.mod needed; to update it:
-	go mod tidy
