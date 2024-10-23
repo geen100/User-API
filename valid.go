@@ -42,4 +42,6 @@ func ValidateUserName(firstName, lastName string) error {
 	return nil
 }
 
+package komter_serverside_sandbox/api/app is not in std (/opt/homebrew/Cellar/go/1.23.1/libexec/src/komter_serverside_sandbox/api/app) (compile)
+
 
