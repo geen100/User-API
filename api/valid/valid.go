@@ -1,4 +1,4 @@
-package main
+package valid
 
 import (
 	"errors"
@@ -6,14 +6,6 @@ import (
 	"regexp"
 	"unicode/utf8"
 )
-
-type User struct {
-	ID        uint64 `json:"id"`
-	AccountID string `json:"account_id"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Age       uint8  `json:"age"`
-}
 
 var validID = regexp.MustCompile(`^[a-zA-Z0-9_]{4,64}$`)
 
@@ -41,7 +33,3 @@ func ValidateUserName(firstName, lastName string) error {
 	}
 	return nil
 }
-
-package komter_serverside_sandbox/api/app is not in std (/opt/homebrew/Cellar/go/1.23.1/libexec/src/komter_serverside_sandbox/api/app) (compile)
-
-

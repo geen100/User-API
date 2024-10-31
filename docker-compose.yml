@@ -1,10 +1,10 @@
 services:
   app:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     ports:
-      - "${APP_PORT}:8080"
+      - "${APP_PORT}:8081"
     depends_on:
       - db
     environment:
@@ -22,7 +22,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
-      - "3306:3306"
+      - "3307:3307"
     volumes:
       - ./database/init:/docker-entrypoint-initdb.d
 
